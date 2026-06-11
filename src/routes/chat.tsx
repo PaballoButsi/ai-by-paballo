@@ -348,7 +348,7 @@ function ChatPage() {
             ) : (
               <div className="flex flex-col gap-6">
                 {messages.map((m) => (
-                  <ChatMessage key={m.id} message={m} />
+                  <ChatMessage key={m.id} message={m} mode={mode} />
                 ))}
                 {status === "submitted" && <ThinkingBubble />}
               </div>
