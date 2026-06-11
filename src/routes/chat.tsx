@@ -311,7 +311,8 @@ function ChatPage() {
         </nav>
 
         <div className="mt-auto p-4 text-xs text-muted-foreground border-t border-border">
-          Powered by Lovable AI
+          <p className="font-medium text-foreground/80">About</p>
+          <p className="mt-1">Built by Paballo Buts</p>
         </div>
       </aside>
 
