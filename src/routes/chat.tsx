@@ -13,6 +13,9 @@ import {
   Loader2,
   Menu,
   Trash2,
+  Download,
+  Copy,
+  Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -308,7 +311,8 @@ function ChatPage() {
         </nav>
 
         <div className="mt-auto p-4 text-xs text-muted-foreground border-t border-border">
-          Powered by Lovable AI
+          <p className="font-medium text-foreground/80">About</p>
+          <p className="mt-1">Built by Paballo Buts</p>
         </div>
       </aside>
 
@@ -344,7 +348,7 @@ function ChatPage() {
             ) : (
               <div className="flex flex-col gap-6">
                 {messages.map((m) => (
-                  <ChatMessage key={m.id} message={m} />
+                  <ChatMessage key={m.id} message={m} mode={mode} />
                 ))}
                 {status === "submitted" && <ThinkingBubble />}
               </div>
@@ -416,11 +420,67 @@ function EmptyState({ mode, onPick }: { mode: Mode; onPick: (text: string) => vo
   );
 }
 
-function ChatMessage({ message }: { message: UIMessage }) {
+function ChatMessage({ message, mode }: { message: UIMessage; mode: Mode }) {
   const isUser = message.role === "user";
   const text = message.parts
     .map((p) => (p.type === "text" ? p.text : ""))
     .join("");
+  const [copied, setCopied] = useState(false);
+  const showActions = !isUser && mode === "planner" && text.trim().length > 0;
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      toast.success("Copied to clipboard");
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error("Could not copy");
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    try {
+      const { jsPDF } = await import("jspdf");
+      const doc = new jsPDF({ unit: "pt", format: "a4" });
+      const margin = 48;
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const maxWidth = pageWidth - margin * 2;
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.text("Daily Schedule", margin, margin);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(120);
+      doc.text(
+        `Generated ${new Date().toLocaleString()} · SmartWork AI`,
+        margin,
+        margin + 16,
+      );
+      doc.setTextColor(20);
+      doc.setFontSize(11);
+
+      const lines = doc.splitTextToSize(text, maxWidth);
+      let y = margin + 40;
+      const lineHeight = 15;
+      for (const line of lines) {
+        if (y > pageHeight - margin) {
+          doc.addPage();
+          y = margin;
+        }
+        doc.text(line, margin, y);
+        y += lineHeight;
+      }
+
+      doc.save(`smartwork-schedule-${Date.now()}.pdf`);
+      toast.success("PDF downloaded");
+    } catch (err) {
+      console.error(err);
+      toast.error("Could not generate PDF");
+    }
+  };
 
   return (
     <div className={cn("flex gap-3", isUser ? "justify-end" : "justify-start")}>
@@ -429,19 +489,49 @@ function ChatMessage({ message }: { message: UIMessage }) {
           <Sparkles className="h-4 w-4" />
         </div>
       )}
-      <div
-        className={cn(
-          "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
-          isUser
-            ? "bg-primary text-primary-foreground rounded-br-sm shadow-md shadow-primary/20"
-            : "bg-card text-card-foreground border border-border rounded-bl-sm shadow-[0_0_0_1px_rgba(96,165,250,0.06),0_8px_24px_-12px_rgba(37,99,235,0.35)]",
-        )}
-      >
-        {isUser ? (
-          <p className="whitespace-pre-wrap">{text}</p>
-        ) : (
-          <div className="prose prose-sm max-w-none prose-headings:mt-3 prose-headings:mb-2 prose-p:my-2 prose-ul:my-2 prose-li:my-0.5 prose-table:my-3 prose-th:px-2 prose-th:py-1 prose-td:px-2 prose-td:py-1 prose-table:border prose-th:border prose-td:border prose-th:bg-accent/40">
-            <ReactMarkdown>{text || "…"}</ReactMarkdown>
+      <div className="flex max-w-[85%] flex-col gap-2">
+        <div
+          className={cn(
+            "rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
+            isUser
+              ? "bg-primary text-primary-foreground rounded-br-sm shadow-md shadow-primary/20"
+              : "bg-card text-card-foreground border border-border rounded-bl-sm shadow-[0_0_0_1px_rgba(96,165,250,0.06),0_8px_24px_-12px_rgba(37,99,235,0.35)]",
+          )}
+        >
+          {isUser ? (
+            <p className="whitespace-pre-wrap">{text}</p>
+          ) : (
+            <div className="prose prose-sm max-w-none prose-headings:mt-3 prose-headings:mb-2 prose-p:my-2 prose-ul:my-2 prose-li:my-0.5 prose-table:my-3 prose-th:px-2 prose-th:py-1 prose-td:px-2 prose-td:py-1 prose-table:border prose-th:border prose-td:border prose-th:bg-accent/40">
+              <ReactMarkdown>{text || "…"}</ReactMarkdown>
+            </div>
+          )}
+        </div>
+        {showActions && (
+          <div className="flex gap-2">
+            <Button
+              onClick={handleDownloadPdf}
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 text-xs"
+            >
+              <Download className="h-3.5 w-3.5" /> Download PDF
+            </Button>
+            <Button
+              onClick={handleCopy}
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 text-xs"
+            >
+              {copied ? (
+                <>
+                  <Check className="h-3.5 w-3.5 text-success" /> Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="h-3.5 w-3.5" /> Copy
+                </>
+              )}
+            </Button>
           </div>
         )}
       </div>
