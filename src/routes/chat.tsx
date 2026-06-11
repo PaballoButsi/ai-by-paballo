@@ -12,6 +12,7 @@ import {
   Plus,
   Loader2,
   Menu,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -73,10 +74,42 @@ const SUGGESTIONS: Record<Mode, string[]> = {
   ],
 };
 
+type Conversation = {
+  id: string;
+  title: string;
+  mode: Mode;
+  messages: UIMessage[];
+  updatedAt: number;
+};
+
+const STORAGE_KEY = "smartwork.conversations.v1";
+
+function loadConversations(): Conversation[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Conversation[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function makeTitle(messages: UIMessage[]): string {
+  const first = messages.find((m) => m.role === "user");
+  if (!first) return "New conversation";
+  const text = first.parts.map((p) => (p.type === "text" ? p.text : "")).join(" ").trim();
+  const words = text.split(/\s+/).slice(0, 6).join(" ");
+  return words.length > 40 ? words.slice(0, 40) + "…" : words || "New conversation";
+}
+
 function ChatPage() {
   const [mode, setMode] = useState<Mode>("chat");
   const [input, setInput] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [conversations, setConversations] = useState<Conversation[]>(() => loadConversations());
+  const [activeId, setActiveId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -109,6 +142,32 @@ function ChatPage() {
     if (!isLoading) inputRef.current?.focus();
   }, [isLoading, mode]);
 
+  // Persist active conversation whenever messages settle.
+  useEffect(() => {
+    if (isLoading) return;
+    if (messages.length === 0) return;
+    setConversations((prev) => {
+      const id = activeId ?? crypto.randomUUID();
+      if (!activeId) setActiveId(id);
+      const existing = prev.find((c) => c.id === id);
+      const next: Conversation = {
+        id,
+        title: existing?.title && existing.messages.length > 0 ? existing.title : makeTitle(messages),
+        mode,
+        messages,
+        updatedAt: Date.now(),
+      };
+      const rest = prev.filter((c) => c.id !== id);
+      const updated = [next, ...rest];
+      try {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      } catch {
+        // ignore quota errors
+      }
+      return updated;
+    });
+  }, [messages, isLoading, activeId, mode]);
+
   const handleSend = async (text?: string) => {
     const content = (text ?? input).trim();
     if (!content || isLoading) return;
@@ -126,7 +185,32 @@ function ChatPage() {
   const newChat = () => {
     setMessages([]);
     setInput("");
+    setActiveId(null);
     inputRef.current?.focus();
+  };
+
+  const openConversation = (c: Conversation) => {
+    setActiveId(c.id);
+    setMode(c.mode);
+    setMessages(c.messages);
+    setInput("");
+    setSidebarOpen(false);
+  };
+
+  const deleteConversation = (id: string) => {
+    setConversations((prev) => {
+      const updated = prev.filter((c) => c.id !== id);
+      try {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      } catch {
+        // ignore
+      }
+      return updated;
+    });
+    if (activeId === id) {
+      setActiveId(null);
+      setMessages([]);
+    }
   };
 
   return (
@@ -152,6 +236,43 @@ function ChatPage() {
             <Plus className="h-4 w-4" /> New conversation
           </Button>
         </div>
+
+        {conversations.length > 0 && (
+          <div className="px-3 pb-2 pt-1">
+            <p className="px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              History
+            </p>
+            <div className="mt-1 flex max-h-64 flex-col gap-0.5 overflow-y-auto">
+              {conversations.map((c) => {
+                const active = c.id === activeId;
+                return (
+                  <div
+                    key={c.id}
+                    className={cn(
+                      "group flex items-center gap-1 rounded-lg pr-1 transition-colors",
+                      active ? "bg-accent" : "hover:bg-muted",
+                    )}
+                  >
+                    <button
+                      onClick={() => openConversation(c)}
+                      className="flex-1 truncate px-3 py-2 text-left text-sm"
+                      title={c.title}
+                    >
+                      {c.title}
+                    </button>
+                    <button
+                      onClick={() => deleteConversation(c.id)}
+                      className="rounded-md p-1.5 text-muted-foreground opacity-0 hover:bg-background hover:text-foreground group-hover:opacity-100"
+                      aria-label="Delete conversation"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="px-3 pb-2 pt-1">
           <p className="px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
