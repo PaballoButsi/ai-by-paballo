@@ -312,8 +312,8 @@ function ChatMessage({ message }: { message: UIMessage }) {
         className={cn(
           "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
           isUser
-            ? "bg-primary text-primary-foreground rounded-br-sm"
-            : "bg-muted text-foreground rounded-bl-sm",
+            ? "bg-primary text-primary-foreground rounded-br-sm shadow-md shadow-primary/20"
+            : "bg-card text-card-foreground border border-border rounded-bl-sm shadow-[0_0_0_1px_rgba(96,165,250,0.06),0_8px_24px_-12px_rgba(37,99,235,0.35)]",
         )}
       >
         {isUser ? (
