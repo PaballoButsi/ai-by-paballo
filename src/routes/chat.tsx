@@ -799,3 +799,172 @@ function ThinkingBubble() {
     </div>
   );
 }
+
+const PERSONA_ICONS: Record<Persona, typeof Briefcase> = {
+  professional: Briefcase,
+  coach: Heart,
+  friend: Smile,
+};
+
+function ProfileView({
+  profile,
+  onSave,
+}: {
+  profile: Profile;
+  onSave: (p: Profile) => void;
+}) {
+  const [draft, setDraft] = useState<Profile>(profile);
+
+  useEffect(() => {
+    setDraft(profile);
+  }, [profile]);
+
+  const update = <K extends keyof Profile>(k: K, v: Profile[K]) =>
+    setDraft((d) => ({ ...d, [k]: v }));
+
+  return (
+    <div className="mx-auto max-w-2xl px-4 py-8">
+      <div className="mb-8">
+        <h2 className="text-2xl font-semibold tracking-tight">Your profile</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Personalize how SmartWork AI talks to you. Saved locally on this device.
+        </p>
+      </div>
+
+      <div className="space-y-5 rounded-2xl border border-border bg-card p-6">
+        <Field label="Full name">
+          <input
+            value={draft.name}
+            onChange={(e) => update("name", e.target.value)}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+        </Field>
+        <Field label="Job title">
+          <input
+            value={draft.jobTitle}
+            onChange={(e) => update("jobTitle", e.target.value)}
+            placeholder="e.g. Product Manager"
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+        </Field>
+        <Field label="Industry">
+          <select
+            value={draft.industry}
+            onChange={(e) => update("industry", e.target.value)}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          >
+            {INDUSTRIES.map((i) => (
+              <option key={i} value={i}>
+                {i}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Preferred work hours">
+          <input
+            value={draft.workHours}
+            onChange={(e) => update("workHours", e.target.value)}
+            placeholder="e.g. 09:00 - 17:00"
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+        </Field>
+      </div>
+
+      <div className="mt-8">
+        <h3 className="text-base font-semibold">AI Persona</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Choose how your assistant speaks to you across every feature.
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          {(Object.keys(PERSONA_META) as Persona[]).map((p) => {
+            const meta = PERSONA_META[p];
+            const Icon = PERSONA_ICONS[p];
+            const active = draft.persona === p;
+            return (
+              <button
+                key={p}
+                onClick={() => update("persona", p)}
+                className={cn(
+                  "rounded-xl border p-4 text-left transition-colors",
+                  active
+                    ? "border-primary bg-primary/10 ring-2 ring-primary/30"
+                    : "border-border bg-card hover:border-primary/50",
+                )}
+              >
+                <Icon
+                  className={cn("h-5 w-5", active ? "text-primary" : "text-muted-foreground")}
+                />
+                <p className="mt-2 text-sm font-semibold">{meta.label}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{meta.description}</p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="mt-8 flex justify-end">
+        <Button onClick={() => onSave(draft)} className="gap-2">
+          <Check className="h-4 w-4" /> Save profile
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+function AffirmationCard() {
+  const [quote, setQuote] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+
+  const fetchQuote = async () => {
+    setLoading(true);
+    try {
+      const res = await getAffirmation();
+      setQuote(res.quote);
+    } catch {
+      setQuote("Small consistent steps build the biggest results.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void fetchQuote();
+  }, []);
+
+  return (
+    <div className="mb-6 w-full max-w-2xl rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent p-5 text-left shadow-[0_8px_30px_-12px_rgba(37,99,235,0.35)]">
+      <div className="flex items-start gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/20 text-primary">
+          <Quote className="h-4 w-4" />
+        </div>
+        <div className="flex-1">
+          <p className="text-xs font-medium uppercase tracking-wider text-primary/80">
+            Daily affirmation
+          </p>
+          <p className="mt-1 text-sm font-medium leading-relaxed text-foreground">
+            {loading && !quote ? "Loading today's affirmation…" : quote || "…"}
+          </p>
+        </div>
+        <button
+          onClick={() => void fetchQuote()}
+          disabled={loading}
+          aria-label="New affirmation"
+          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+        >
+          <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+        </button>
+      </div>
+    </div>
+  );
+}
