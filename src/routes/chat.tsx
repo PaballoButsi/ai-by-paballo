@@ -554,7 +554,15 @@ function ChatMessage({ message, mode }: { message: UIMessage; mode: Mode }) {
     .map((p) => (p.type === "text" ? p.text : ""))
     .join("");
   const [copied, setCopied] = useState(false);
+  const [doneTasks, setDoneTasks] = useState<Record<number, boolean>>({});
   const showActions = !isUser && mode === "planner" && text.trim().length > 0;
+  const plannerTasks =
+    !isUser && mode === "planner" && text.trim().length > 0 ? parsePlannerTasks(text) : [];
+  const keyTakeaways =
+    !isUser && mode === "research" && text.trim().length > 0 ? parseKeyTakeaways(text, 3) : [];
+  const completedCount = Object.values(doneTasks).filter(Boolean).length;
+  const progress =
+    plannerTasks.length > 0 ? Math.round((completedCount / plannerTasks.length) * 100) : 0;
 
   const handleCopy = async () => {
     try {
@@ -634,6 +642,63 @@ function ChatMessage({ message, mode }: { message: UIMessage; mode: Mode }) {
             </div>
           )}
         </div>
+        {plannerTasks.length > 0 && (
+          <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold">Task tracker</p>
+              <p className="text-xs text-muted-foreground">
+                {completedCount} / {plannerTasks.length} done
+              </p>
+            </div>
+            <Progress value={progress} className="mt-2 h-2" />
+            <ul className="mt-3 flex flex-col gap-2">
+              {plannerTasks.map((t, i) => {
+                const checked = !!doneTasks[i];
+                return (
+                  <li key={i} className="flex items-start gap-2.5">
+                    <Checkbox
+                      id={`${message.id}-task-${i}`}
+                      checked={checked}
+                      onCheckedChange={(v) =>
+                        setDoneTasks((prev) => ({ ...prev, [i]: v === true }))
+                      }
+                      className="mt-0.5"
+                    />
+                    <label
+                      htmlFor={`${message.id}-task-${i}`}
+                      className={cn(
+                        "flex-1 cursor-pointer text-sm leading-snug",
+                        checked && "text-muted-foreground line-through",
+                      )}
+                    >
+                      <span className="text-xs font-medium text-primary mr-2">{t.time}</span>
+                      {t.task}
+                      {t.priority && (
+                        <span className="ml-2 text-xs text-muted-foreground">{t.priority}</span>
+                      )}
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+        {keyTakeaways.length > 0 && (
+          <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4 shadow-sm">
+            <div className="flex items-center gap-2">
+              <Lightbulb className="h-4 w-4 text-primary" />
+              <p className="text-sm font-semibold">Key Takeaways</p>
+            </div>
+            <ul className="mt-2 flex flex-col gap-1.5 pl-1">
+              {keyTakeaways.map((k, i) => (
+                <li key={i} className="flex gap-2 text-sm">
+                  <span className="text-primary">•</span>
+                  <span className="flex-1">{k}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {showActions && (
           <div className="flex gap-2">
             <Button
