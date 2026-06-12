@@ -16,6 +16,10 @@ import {
   Download,
   Copy,
   Check,
+  Battery,
+  BatteryLow,
+  BatteryFull,
+  Lightbulb,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -34,6 +38,54 @@ export const Route = createFileRoute("/chat")({
 });
 
 type Mode = "chat" | "planner" | "research";
+type Energy = "low" | "normal" | "high";
+
+const ENERGY_OPTIONS: { id: Energy; label: string; icon: typeof Battery }[] = [
+  { id: "low", label: "Low energy", icon: BatteryLow },
+  { id: "normal", label: "Normal", icon: Battery },
+  { id: "high", label: "High energy", icon: BatteryFull },
+];
+
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+// Parse a markdown table from the planner output: returns task rows.
+function parsePlannerTasks(text: string): { time: string; task: string; priority: string }[] {
+  const lines = text.split("\n");
+  const tasks: { time: string; task: string; priority: string }[] = [];
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t.startsWith("|") || !t.endsWith("|")) continue;
+    const cells = t.slice(1, -1).split("|").map((c) => c.trim());
+    if (cells.length < 3) continue;
+    // Skip header + separator rows
+    if (cells.every((c) => /^-+:?$|^:?-+:?$/.test(c.replace(/\s/g, "")))) continue;
+    if (/^time$/i.test(cells[0]) && /^task$/i.test(cells[1])) continue;
+    if (!cells[0] || !cells[1]) continue;
+    tasks.push({ time: cells[0], task: cells[1], priority: cells[2] ?? "" });
+  }
+  return tasks;
+}
+
+// Extract first N bullets under the "Key Points" section.
+function parseKeyTakeaways(text: string, n = 3): string[] {
+  const lines = text.split("\n");
+  const startIdx = lines.findIndex((l) => /^#+\s.*key\s*points/i.test(l));
+  if (startIdx === -1) return [];
+  const out: string[] = [];
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    const l = lines[i].trim();
+    if (/^#+\s/.test(l)) break;
+    const m = l.match(/^[-*]\s+(.*)$/);
+    if (m && m[1]) out.push(m[1]);
+    if (out.length >= n) break;
+  }
+  return out;
+}
 
 const MODES: { id: Mode; label: string; icon: typeof MessageSquare; description: string; placeholder: string }[] = [
   {
