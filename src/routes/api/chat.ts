@@ -4,6 +4,41 @@ import { createLovableAiGatewayProvider } from "@/lib/ai-gateway.server";
 
 type Mode = "chat" | "planner" | "research";
 type Energy = "low" | "normal" | "high";
+type Persona = "professional" | "coach" | "friend";
+type ProfilePayload = {
+  name?: string;
+  jobTitle?: string;
+  industry?: string;
+  workHours?: string;
+};
+
+const PERSONA_ADDENDUM: Record<Persona, string> = {
+  professional: "Keep your tone formal, professional, and concise.",
+  coach:
+    "Be motivational and encouraging in your tone. Celebrate small wins and push the user toward action.",
+  friend:
+    "Be warm, casual, and conversational like a knowledgeable friend. Use plain language.",
+};
+
+function buildProfilePreamble(profile?: ProfilePayload): string {
+  if (!profile) return "";
+  const name = profile.name?.trim();
+  const job = profile.jobTitle?.trim();
+  const industry = profile.industry?.trim();
+  const hours = profile.workHours?.trim();
+  if (!name && !job && !industry && !hours) return "";
+  const parts: string[] = [];
+  if (name && job && industry) {
+    parts.push(`You are assisting ${name}, a ${job} in the ${industry} industry.`);
+  } else if (name) {
+    parts.push(`You are assisting ${name}.`);
+    if (job) parts.push(`Their role is ${job}.`);
+    if (industry) parts.push(`They work in the ${industry} industry.`);
+  }
+  if (hours) parts.push(`Their preferred work hours are ${hours}.`);
+  parts.push("Tailor your advice and examples to their role and industry where helpful.");
+  return parts.join(" ");
+}
 
 const ENERGY_GUIDANCE: Record<Energy, string> = {
   low: `The user reports LOW energy today. Schedule lighter, lower-cognitive-load tasks first (admin, email, quick reviews). Add more frequent short breaks. Push demanding deep work to later or trim it. Keep tone encouraging.`,
@@ -58,10 +93,18 @@ export const Route = createFileRoute("/api/chat")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const body = (await request.json()) as { messages?: UIMessage[]; mode?: Mode; energy?: Energy };
+        const body = (await request.json()) as {
+          messages?: UIMessage[];
+          mode?: Mode;
+          energy?: Energy;
+          persona?: Persona;
+          profile?: ProfilePayload;
+        };
         const messages = body.messages;
         const mode: Mode = body.mode ?? "chat";
         const energy: Energy = body.energy ?? "normal";
+        const persona: Persona = body.persona ?? "professional";
+        const profilePreamble = buildProfilePreamble(body.profile);
 
         if (!Array.isArray(messages)) {
           return new Response("messages required", { status: 400 });
@@ -73,10 +116,17 @@ export const Route = createFileRoute("/api/chat")({
         const gateway = createLovableAiGatewayProvider(key);
         const model = gateway("google/gemini-3-flash-preview");
 
-        const system =
+        const baseSystem =
           mode === "planner"
             ? `${SYSTEM_PROMPTS.planner}\n\n## Energy adjustment\n${ENERGY_GUIDANCE[energy]}`
             : SYSTEM_PROMPTS[mode];
+        const system = [
+          profilePreamble,
+          baseSystem,
+          `## Persona\n${PERSONA_ADDENDUM[persona]}`,
+        ]
+          .filter(Boolean)
+          .join("\n\n");
 
         const result = streamText({
           model,
