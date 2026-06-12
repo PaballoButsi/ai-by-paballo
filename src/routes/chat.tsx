@@ -161,6 +161,7 @@ function makeTitle(messages: UIMessage[]): string {
 
 function ChatPage() {
   const [mode, setMode] = useState<Mode>("chat");
+  const [energy, setEnergy] = useState<Energy>("normal");
   const [input, setInput] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>(() => loadConversations());
@@ -172,7 +173,11 @@ function ChatPage() {
     new DefaultChatTransport({
       api: "/api/chat",
       prepareSendMessagesRequest: ({ messages, body }) => ({
-        body: { messages, mode: (body as { mode?: Mode } | undefined)?.mode ?? "chat" },
+        body: {
+          messages,
+          mode: (body as { mode?: Mode } | undefined)?.mode ?? "chat",
+          energy: (body as { energy?: Energy } | undefined)?.energy ?? "normal",
+        },
       }),
     }),
   ).current;
@@ -227,7 +232,7 @@ function ChatPage() {
     const content = (text ?? input).trim();
     if (!content || isLoading) return;
     setInput("");
-    await sendMessage({ text: content }, { body: { mode } });
+    await sendMessage({ text: content }, { body: { mode, energy } });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
