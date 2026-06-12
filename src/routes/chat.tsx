@@ -401,7 +401,12 @@ function ChatPage() {
         <div ref={scrollRef} className="flex-1 overflow-y-auto scroll-smooth">
           <div className="mx-auto max-w-3xl px-4 py-6">
             {messages.length === 0 ? (
-              <EmptyState mode={mode} onPick={(s) => void handleSend(s)} />
+              <EmptyState
+                mode={mode}
+                onPick={(s) => void handleSend(s)}
+                energy={energy}
+                onEnergyChange={setEnergy}
+              />
             ) : (
               <div className="flex flex-col gap-6">
                 {messages.map((m) => (
@@ -441,16 +446,52 @@ function ChatPage() {
             </p>
           </div>
         </div>
+
+        {/* Mobile bottom navigation */}
+        <nav className="md:hidden flex items-stretch border-t border-border bg-card">
+          {MODES.map((m) => {
+            const Icon = m.icon;
+            const active = m.id === mode;
+            return (
+              <button
+                key={m.id}
+                onClick={() => setMode(m.id)}
+                className={cn(
+                  "flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-xs transition-colors",
+                  active ? "text-primary" : "text-muted-foreground hover:text-foreground",
+                )}
+                aria-label={m.label}
+              >
+                <Icon className="h-5 w-5" />
+                <span className="font-medium">{m.label}</span>
+              </button>
+            );
+          })}
+        </nav>
       </main>
     </div>
   );
 }
 
-function EmptyState({ mode, onPick }: { mode: Mode; onPick: (text: string) => void }) {
+function EmptyState({
+  mode,
+  onPick,
+  energy,
+  onEnergyChange,
+}: {
+  mode: Mode;
+  onPick: (text: string) => void;
+  energy: Energy;
+  onEnergyChange: (e: Energy) => void;
+}) {
   const m = MODES.find((x) => x.id === mode)!;
   const Icon = m.icon;
+  const greeting = getGreeting();
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
+      <p className="mb-6 text-sm font-medium text-primary">
+        {greeting} · How can I help you be productive today?
+      </p>
       <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-4">
         <Icon className="h-7 w-7" />
       </div>
@@ -462,6 +503,34 @@ function EmptyState({ mode, onPick }: { mode: Mode; onPick: (text: string) => vo
           ? "Give me any topic and I'll summarize it with key points, opportunities, risks, and recommendations."
           : "Ask me anything about work, focus, or productivity."}
       </p>
+      {mode === "planner" && (
+        <div className="mt-6 flex flex-col items-center gap-2">
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Your energy today
+          </p>
+          <div className="inline-flex rounded-xl border border-border bg-card p-1">
+            {ENERGY_OPTIONS.map((opt) => {
+              const EIcon = opt.icon;
+              const active = opt.id === energy;
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => onEnergyChange(opt.id)}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+                    active
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <EIcon className="h-3.5 w-3.5" />
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <div className="mt-8 grid w-full max-w-2xl gap-2 sm:grid-cols-3">
         {SUGGESTIONS[mode].map((s) => (
           <button
