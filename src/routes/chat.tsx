@@ -16,9 +16,15 @@ import {
   Download,
   Copy,
   Check,
+  Battery,
+  BatteryLow,
+  BatteryFull,
+  Lightbulb,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/chat")({
@@ -34,6 +40,54 @@ export const Route = createFileRoute("/chat")({
 });
 
 type Mode = "chat" | "planner" | "research";
+type Energy = "low" | "normal" | "high";
+
+const ENERGY_OPTIONS: { id: Energy; label: string; icon: typeof Battery }[] = [
+  { id: "low", label: "Low energy", icon: BatteryLow },
+  { id: "normal", label: "Normal", icon: Battery },
+  { id: "high", label: "High energy", icon: BatteryFull },
+];
+
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+// Parse a markdown table from the planner output: returns task rows.
+function parsePlannerTasks(text: string): { time: string; task: string; priority: string }[] {
+  const lines = text.split("\n");
+  const tasks: { time: string; task: string; priority: string }[] = [];
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t.startsWith("|") || !t.endsWith("|")) continue;
+    const cells = t.slice(1, -1).split("|").map((c) => c.trim());
+    if (cells.length < 3) continue;
+    // Skip header + separator rows
+    if (cells.every((c) => /^-+:?$|^:?-+:?$/.test(c.replace(/\s/g, "")))) continue;
+    if (/^time$/i.test(cells[0]) && /^task$/i.test(cells[1])) continue;
+    if (!cells[0] || !cells[1]) continue;
+    tasks.push({ time: cells[0], task: cells[1], priority: cells[2] ?? "" });
+  }
+  return tasks;
+}
+
+// Extract first N bullets under the "Key Points" section.
+function parseKeyTakeaways(text: string, n = 3): string[] {
+  const lines = text.split("\n");
+  const startIdx = lines.findIndex((l) => /^#+\s.*key\s*points/i.test(l));
+  if (startIdx === -1) return [];
+  const out: string[] = [];
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    const l = lines[i].trim();
+    if (/^#+\s/.test(l)) break;
+    const m = l.match(/^[-*]\s+(.*)$/);
+    if (m && m[1]) out.push(m[1]);
+    if (out.length >= n) break;
+  }
+  return out;
+}
 
 const MODES: { id: Mode; label: string; icon: typeof MessageSquare; description: string; placeholder: string }[] = [
   {
@@ -109,6 +163,7 @@ function makeTitle(messages: UIMessage[]): string {
 
 function ChatPage() {
   const [mode, setMode] = useState<Mode>("chat");
+  const [energy, setEnergy] = useState<Energy>("normal");
   const [input, setInput] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>(() => loadConversations());
@@ -120,7 +175,11 @@ function ChatPage() {
     new DefaultChatTransport({
       api: "/api/chat",
       prepareSendMessagesRequest: ({ messages, body }) => ({
-        body: { messages, mode: (body as { mode?: Mode } | undefined)?.mode ?? "chat" },
+        body: {
+          messages,
+          mode: (body as { mode?: Mode } | undefined)?.mode ?? "chat",
+          energy: (body as { energy?: Energy } | undefined)?.energy ?? "normal",
+        },
       }),
     }),
   ).current;
@@ -175,7 +234,7 @@ function ChatPage() {
     const content = (text ?? input).trim();
     if (!content || isLoading) return;
     setInput("");
-    await sendMessage({ text: content }, { body: { mode } });
+    await sendMessage({ text: content }, { body: { mode, energy } });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -344,7 +403,12 @@ function ChatPage() {
         <div ref={scrollRef} className="flex-1 overflow-y-auto scroll-smooth">
           <div className="mx-auto max-w-3xl px-4 py-6">
             {messages.length === 0 ? (
-              <EmptyState mode={mode} onPick={(s) => void handleSend(s)} />
+              <EmptyState
+                mode={mode}
+                onPick={(s) => void handleSend(s)}
+                energy={energy}
+                onEnergyChange={setEnergy}
+              />
             ) : (
               <div className="flex flex-col gap-6">
                 {messages.map((m) => (
@@ -384,16 +448,52 @@ function ChatPage() {
             </p>
           </div>
         </div>
+
+        {/* Mobile bottom navigation */}
+        <nav className="md:hidden flex items-stretch border-t border-border bg-card">
+          {MODES.map((m) => {
+            const Icon = m.icon;
+            const active = m.id === mode;
+            return (
+              <button
+                key={m.id}
+                onClick={() => setMode(m.id)}
+                className={cn(
+                  "flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-xs transition-colors",
+                  active ? "text-primary" : "text-muted-foreground hover:text-foreground",
+                )}
+                aria-label={m.label}
+              >
+                <Icon className="h-5 w-5" />
+                <span className="font-medium">{m.label}</span>
+              </button>
+            );
+          })}
+        </nav>
       </main>
     </div>
   );
 }
 
-function EmptyState({ mode, onPick }: { mode: Mode; onPick: (text: string) => void }) {
+function EmptyState({
+  mode,
+  onPick,
+  energy,
+  onEnergyChange,
+}: {
+  mode: Mode;
+  onPick: (text: string) => void;
+  energy: Energy;
+  onEnergyChange: (e: Energy) => void;
+}) {
   const m = MODES.find((x) => x.id === mode)!;
   const Icon = m.icon;
+  const greeting = getGreeting();
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
+      <p className="mb-6 text-sm font-medium text-primary">
+        {greeting} · How can I help you be productive today?
+      </p>
       <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-4">
         <Icon className="h-7 w-7" />
       </div>
@@ -405,6 +505,34 @@ function EmptyState({ mode, onPick }: { mode: Mode; onPick: (text: string) => vo
           ? "Give me any topic and I'll summarize it with key points, opportunities, risks, and recommendations."
           : "Ask me anything about work, focus, or productivity."}
       </p>
+      {mode === "planner" && (
+        <div className="mt-6 flex flex-col items-center gap-2">
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Your energy today
+          </p>
+          <div className="inline-flex rounded-xl border border-border bg-card p-1">
+            {ENERGY_OPTIONS.map((opt) => {
+              const EIcon = opt.icon;
+              const active = opt.id === energy;
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => onEnergyChange(opt.id)}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+                    active
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <EIcon className="h-3.5 w-3.5" />
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <div className="mt-8 grid w-full max-w-2xl gap-2 sm:grid-cols-3">
         {SUGGESTIONS[mode].map((s) => (
           <button
@@ -426,7 +554,15 @@ function ChatMessage({ message, mode }: { message: UIMessage; mode: Mode }) {
     .map((p) => (p.type === "text" ? p.text : ""))
     .join("");
   const [copied, setCopied] = useState(false);
+  const [doneTasks, setDoneTasks] = useState<Record<number, boolean>>({});
   const showActions = !isUser && mode === "planner" && text.trim().length > 0;
+  const plannerTasks =
+    !isUser && mode === "planner" && text.trim().length > 0 ? parsePlannerTasks(text) : [];
+  const keyTakeaways =
+    !isUser && mode === "research" && text.trim().length > 0 ? parseKeyTakeaways(text, 3) : [];
+  const completedCount = Object.values(doneTasks).filter(Boolean).length;
+  const progress =
+    plannerTasks.length > 0 ? Math.round((completedCount / plannerTasks.length) * 100) : 0;
 
   const handleCopy = async () => {
     try {
@@ -506,6 +642,63 @@ function ChatMessage({ message, mode }: { message: UIMessage; mode: Mode }) {
             </div>
           )}
         </div>
+        {plannerTasks.length > 0 && (
+          <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold">Task tracker</p>
+              <p className="text-xs text-muted-foreground">
+                {completedCount} / {plannerTasks.length} done
+              </p>
+            </div>
+            <Progress value={progress} className="mt-2 h-2" />
+            <ul className="mt-3 flex flex-col gap-2">
+              {plannerTasks.map((t, i) => {
+                const checked = !!doneTasks[i];
+                return (
+                  <li key={i} className="flex items-start gap-2.5">
+                    <Checkbox
+                      id={`${message.id}-task-${i}`}
+                      checked={checked}
+                      onCheckedChange={(v) =>
+                        setDoneTasks((prev) => ({ ...prev, [i]: v === true }))
+                      }
+                      className="mt-0.5"
+                    />
+                    <label
+                      htmlFor={`${message.id}-task-${i}`}
+                      className={cn(
+                        "flex-1 cursor-pointer text-sm leading-snug",
+                        checked && "text-muted-foreground line-through",
+                      )}
+                    >
+                      <span className="text-xs font-medium text-primary mr-2">{t.time}</span>
+                      {t.task}
+                      {t.priority && (
+                        <span className="ml-2 text-xs text-muted-foreground">{t.priority}</span>
+                      )}
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+        {keyTakeaways.length > 0 && (
+          <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4 shadow-sm">
+            <div className="flex items-center gap-2">
+              <Lightbulb className="h-4 w-4 text-primary" />
+              <p className="text-sm font-semibold">Key Takeaways</p>
+            </div>
+            <ul className="mt-2 flex flex-col gap-1.5 pl-1">
+              {keyTakeaways.map((k, i) => (
+                <li key={i} className="flex gap-2 text-sm">
+                  <span className="text-primary">•</span>
+                  <span className="flex-1">{k}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {showActions && (
           <div className="flex gap-2">
             <Button
