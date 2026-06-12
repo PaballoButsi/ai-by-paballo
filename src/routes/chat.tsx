@@ -20,12 +20,28 @@ import {
   BatteryLow,
   BatteryFull,
   Lightbulb,
+  User,
+  Briefcase,
+  Heart,
+  Smile,
+  RefreshCw,
+  Quote,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
+import {
+  DEFAULT_PROFILE,
+  INDUSTRIES,
+  PERSONA_META,
+  loadProfile,
+  saveProfile,
+  type Persona,
+  type Profile,
+} from "@/lib/profile";
+import { getAffirmation } from "@/lib/affirmation.functions";
 
 export const Route = createFileRoute("/chat")({
   head: () => ({
@@ -39,7 +55,7 @@ export const Route = createFileRoute("/chat")({
   component: ChatPage,
 });
 
-type Mode = "chat" | "planner" | "research";
+type Mode = "chat" | "planner" | "research" | "profile";
 type Energy = "low" | "normal" | "high";
 
 const ENERGY_OPTIONS: { id: Energy; label: string; icon: typeof Battery }[] = [
@@ -111,9 +127,16 @@ const MODES: { id: Mode; label: string; icon: typeof MessageSquare; description:
     description: "Summarize any topic",
     placeholder: "Enter a topic to summarize, e.g. AI in education…",
   },
+  {
+    id: "profile",
+    label: "Profile",
+    icon: User,
+    description: "Personalize your assistant",
+    placeholder: "",
+  },
 ];
 
-const SUGGESTIONS: Record<Mode, string[]> = {
+const SUGGESTIONS: Record<Exclude<Mode, "profile">, string[]> = {
   chat: [
     "What should I focus on today?",
     "How do I stay focused in long meetings?",
@@ -168,8 +191,14 @@ function ChatPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>(() => loadConversations());
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [profile, setProfile] = useState<Profile>(DEFAULT_PROFILE);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Load profile from localStorage on mount (client-only).
+  useEffect(() => {
+    setProfile(loadProfile());
+  }, []);
 
   const transport = useRef(
     new DefaultChatTransport({
@@ -179,6 +208,8 @@ function ChatPage() {
           messages,
           mode: (body as { mode?: Mode } | undefined)?.mode ?? "chat",
           energy: (body as { energy?: Energy } | undefined)?.energy ?? "normal",
+          persona: (body as { persona?: Persona } | undefined)?.persona ?? "professional",
+          profile: (body as { profile?: Profile } | undefined)?.profile,
         },
       }),
     }),
@@ -234,7 +265,10 @@ function ChatPage() {
     const content = (text ?? input).trim();
     if (!content || isLoading) return;
     setInput("");
-    await sendMessage({ text: content }, { body: { mode, energy } });
+    await sendMessage(
+      { text: content },
+      { body: { mode, energy, persona: profile.persona, profile } },
+    );
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -400,6 +434,18 @@ function ChatPage() {
           </span>
         </header>
 
+        {mode === "profile" ? (
+          <div className="flex-1 overflow-y-auto">
+            <ProfileView
+              profile={profile}
+              onSave={(p) => {
+                setProfile(p);
+                saveProfile(p);
+                toast.success("Profile saved");
+              }}
+            />
+          </div>
+        ) : (
         <div ref={scrollRef} className="flex-1 overflow-y-auto scroll-smooth">
           <div className="mx-auto max-w-3xl px-4 py-6">
             {messages.length === 0 ? (
@@ -408,6 +454,7 @@ function ChatPage() {
                 onPick={(s) => void handleSend(s)}
                 energy={energy}
                 onEnergyChange={setEnergy}
+                profile={profile}
               />
             ) : (
               <div className="flex flex-col gap-6">
@@ -419,7 +466,9 @@ function ChatPage() {
             )}
           </div>
         </div>
+        )}
 
+        {mode !== "profile" && (
         <div className="border-t border-border bg-background">
           <div className="mx-auto max-w-3xl px-4 py-4">
             <div className="flex items-end gap-2 rounded-2xl border border-border bg-card p-2 shadow-sm focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition">
@@ -448,6 +497,7 @@ function ChatPage() {
             </p>
           </div>
         </div>
+        )}
 
         {/* Mobile bottom navigation */}
         <nav className="md:hidden flex items-stretch border-t border-border bg-card">
@@ -480,19 +530,23 @@ function EmptyState({
   onPick,
   energy,
   onEnergyChange,
+  profile,
 }: {
   mode: Mode;
   onPick: (text: string) => void;
   energy: Energy;
   onEnergyChange: (e: Energy) => void;
+  profile: Profile;
 }) {
   const m = MODES.find((x) => x.id === mode)!;
   const Icon = m.icon;
   const greeting = getGreeting();
+  const firstName = profile.name?.split(" ")[0] || "";
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
+      <AffirmationCard />
       <p className="mb-6 text-sm font-medium text-primary">
-        {greeting} · How can I help you be productive today?
+        {greeting}{firstName ? `, ${firstName}` : ""} · How can I help you be productive today?
       </p>
       <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-4">
         <Icon className="h-7 w-7" />
@@ -534,7 +588,7 @@ function EmptyState({
         </div>
       )}
       <div className="mt-8 grid w-full max-w-2xl gap-2 sm:grid-cols-3">
-        {SUGGESTIONS[mode].map((s) => (
+        {(mode === "profile" ? [] : SUGGESTIONS[mode]).map((s) => (
           <button
             key={s}
             onClick={() => onPick(s)}
